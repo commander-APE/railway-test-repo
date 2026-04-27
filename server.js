@@ -259,7 +259,7 @@ const html = `<!DOCTYPE html>
 app.get('/', (req, res) => res.type('html').send(html));
 
 const server = app.listen(PORT, () => {
-  console.log(\`Flappy Clawb 2P running on port \${PORT}\`);
+  console.log(`Flappy Clawb 2P running on port \${PORT}`);
 });
 
 const wss = new WebSocketServer({ server });
