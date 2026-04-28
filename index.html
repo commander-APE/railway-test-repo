@@ -19,7 +19,6 @@
             image-rendering: pixelated; 
             border: 8px solid #164e63; 
             box-shadow: 0 25px 50px -12px rgb(0 0 0); 
-            display: block;
         }
         .overlay { 
             position: absolute; 
@@ -31,8 +30,21 @@
             border: 6px solid #22d3ee;
             border-radius: 16px;
             text-align: center;
-            min-width: 400px;
+            min-width: 420px;
         }
+        #chat-log {
+            height: 160px;
+            overflow-y: auto;
+            background: #0f172a;
+            border: 3px solid #334155;
+            padding: 8px;
+            text-align: left;
+            font-size: 12px;
+            margin-bottom: 8px;
+        }
+        .chat-line { margin: 2px 0; }
+        .p1 { color: #4ade80; }
+        .p2 { color: #60a5fa; }
     </style>
 </head>
 <body>
@@ -43,25 +55,31 @@
             <!-- Lobby -->
             <div id="lobby" class="overlay">
                 <div class="text-6xl mb-3">🐢</div>
-                <div class="text-4xl font-bold text-yellow-300 mb-8">FLAPPY CLAWB 2P</div>
+                <div class="text-4xl font-bold text-yellow-300 mb-6">FLAPPY CLAWB 2P</div>
                 
-                <div class="mb-8">
+                <div class="mb-6">
                     <div class="text-sky-200 text-sm mb-2">YOUR NAME</div>
                     <input id="name-input" type="text" maxlength="9" value="Clawb" 
                            class="bg-slate-900 border-4 border-sky-400 text-center text-3xl p-4 w-64 rounded-2xl text-white">
                 </div>
                 
-                <button onclick="saveName()" class="block w-full mb-6 bg-sky-500 hover:bg-sky-400 px-8 py-4 text-xl font-bold rounded-2xl border-4 border-white">
-                    SAVE NAME
+                <button onclick="setReady()" id="ready-btn"
+                        class="block w-full mb-6 bg-emerald-500 hover:bg-emerald-400 px-10 py-5 text-2xl font-bold rounded-2xl border-4 border-white">
+                    READY
                 </button>
                 
-                <button onclick="joinGame()" id="join-btn" 
-                        class="block w-full bg-emerald-500 hover:bg-emerald-400 px-8 py-6 text-3xl font-bold rounded-3xl border-4 border-white">
-                    JOIN GAME
-                </button>
+                <div class="mb-6">
+                    <div id="chat-log" class="text-left text-xs"></div>
+                    <div class="flex gap-2">
+                        <input id="chat-input" type="text" placeholder="Type message..." 
+                               class="flex-1 bg-slate-900 border-2 border-slate-500 p-3 text-sm rounded-xl text-white"
+                               onkeypress="if(event.key === 'Enter') sendChat()">
+                        <button onclick="sendChat()" class="bg-slate-600 hover:bg-slate-500 px-6 rounded-xl">SEND</button>
+                    </div>
+                </div>
                 
-                <div id="status" class="mt-10 text-sky-200 text-sm">Connecting to server...</div>
-                <div id="ping" class="text-xs text-sky-300 mt-2"></div>
+                <div id="status" class="text-sky-200 text-sm">Connecting to server...</div>
+                <div id="ping" class="text-xs text-sky-300 mt-1"></div>
             </div>
 
             <!-- Game Over -->
@@ -86,15 +104,24 @@
         let lastPing = 0;
         let pingMs = 0;
         let connected = false;
-        let joined = false;
+        let ready = false;
 
         const statusEl = document.getElementById('status');
         const pingEl = document.getElementById('ping');
-        const joinBtn = document.getElementById('join-btn');
+        const chatLog = document.getElementById('chat-log');
+        const readyBtn = document.getElementById('ready-btn');
 
         function updateStatus(text, error = false) {
             statusEl.textContent = text;
             statusEl.style.color = error ? '#fda4af' : '#bae6fd';
+        }
+
+        function addChat(name, colorClass, message) {
+            const line = document.createElement('div');
+            line.className = `chat-line ${colorClass}`;
+            line.innerHTML = `<span class="font-bold">${name}:</span> ${message}`;
+            chatLog.appendChild(line);
+            chatLog.scrollTop = chatLog.scrollHeight;
         }
 
         function connect() {
@@ -103,7 +130,7 @@
             
             ws.onopen = () => {
                 connected = true;
-                updateStatus('Connected');
+                updateStatus('Connected - enter name and get ready');
                 lastPing = performance.now();
                 ws.send(JSON.stringify({type: 'ping'}));
             };
@@ -116,23 +143,23 @@
                     pingMs = Math.round(performance.now() - lastPing);
                     pingEl.textContent = `PING: ${pingMs}ms`;
                     setTimeout(() => {
-                        if (ws && ws.readyState === 1) {
-                            lastPing = performance.now();
-                            ws.send(JSON.stringify({type: 'ping'}));
-                        }
+                        if (ws && ws.readyState === 1) ws.send(JSON.stringify({type: 'ping'}));
                     }, 1000);
                 }
-                if ((msg.type === 'start' || msg.type === 'state') && !joined) {
-                    joined = true;
+                if (msg.type === 'chat') {
+                    const color = msg.playerId === 'p1' ? 'p1' : 'p2';
+                    addChat(msg.name, color, msg.message);
+                }
+                if ((msg.type === 'start' || msg.type === 'state') && !ready) {
                     document.getElementById('lobby').style.display = 'none';
                     gameState = msg.state;
                 }
                 if (msg.type === 'gameOver') {
                     gameState = msg.finalState || msg.state;
                     const result = document.getElementById('final-result');
-                    let html = 'GAME OVER<br><span class="text-xl text-white">';
+                    let html = 'GAME OVER<br><span class="text-xl text-white block mt-6">';
                     Object.values(gameState.players || {}).forEach(p => {
-                        html += p.name + ': ' + (p.score || 0) + '<br>';
+                        html += `${p.name}: ${p.score || 0}<br>`;
                     });
                     html += '</span>';
                     result.innerHTML = html;
@@ -145,20 +172,34 @@
         }
 
         window.saveName = function() {
-            myName = document.getElementById('name-input').value.trim() || 'Clawb';
+            myName = document.getElementById('name-input').value.trim() || 'Player';
+        };
+
+        window.setReady = function() {
+            if (!connected) return;
+            window.saveName();
+            ready = true;
+            readyBtn.textContent = 'READY ✓';
+            readyBtn.style.backgroundColor = '#4ade80';
+            readyBtn.disabled = true;
+            
             if (ws && ws.readyState === 1 && myId) {
-                ws.send(JSON.stringify({type:'name', id: myId, name: myName}));
+                ws.send(JSON.stringify({ type: 'ready', id: myId, name: myName }));
             }
         };
 
-        window.joinGame = function() {
-            if (!connected || joined) return;
-            joinBtn.textContent = 'WAITING...';
-            joinBtn.disabled = true;
-            updateStatus('Waiting for second player...');
-            if (ws && ws.readyState === 1 && myId) {
-                ws.send(JSON.stringify({type:'name', id: myId, name: myName}));
-            }
+        window.sendChat = function() {
+            const input = document.getElementById('chat-input');
+            const message = input.value.trim();
+            if (!message || !ws || !myId) return;
+            
+            ws.send(JSON.stringify({
+                type: 'chat',
+                playerId: myId,
+                name: myName,
+                message: message
+            }));
+            input.value = '';
         };
 
         function flap() {
@@ -213,6 +254,7 @@
         window.onload = () => {
             connect();
             draw();
+            setTimeout(() => document.getElementById('name-input').focus(), 500);
         };
     </script>
 </body>
