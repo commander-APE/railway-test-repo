@@ -1,14 +1,19 @@
 const express = require('express');
 const { WebSocketServer } = require('ws');
+const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// Serve the static index.html file
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
 app.use(express.static(__dirname));
 
 const server = app.listen(PORT, () => {
-  console.log(`Flappy Clawb 2P server running on port ${PORT}`);
+  console.log(`Flappy Clawb 2P running on port ${PORT}`);
 });
 
 const wss = new WebSocketServer({ server });
@@ -131,4 +136,4 @@ function broadcast(msg) {
   }
 }
 
-console.log('✅ Pure server-side Flappy Clawb 2P started on port', PORT);
+console.log('✅ Clean server started on port', PORT);
