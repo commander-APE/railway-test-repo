@@ -1,16 +1,15 @@
 const express = require('express');
 const { WebSocketServer } = require('ws');
 const path = require('path');
-const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
 
+app.use(express.static(__dirname));
+
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
-
-app.use(express.static(__dirname));
 
 const server = app.listen(PORT, () => {
   console.log(`Flappy Clawb 2P running on port ${PORT}`);
@@ -21,6 +20,7 @@ const wss = new WebSocketServer({ server });
 let players = new Map();
 let gameRunning = false;
 let gameData = { players: {}, pipes: [], frame: 0 };
+let readyPlayers = new Set();
 
 wss.on('connection', (socket) => {
   if (players.size >= 2) {
@@ -33,21 +33,40 @@ wss.on('connection', (socket) => {
 
   socket.send(JSON.stringify({ type: 'connected', playerId: id }));
 
-  if (players.size === 2 && !gameRunning) {
-    startNewGame();
+  if (players.size === 2) {
+    readyPlayers.clear();
   }
 
   socket.on('message', (data) => {
     try {
       const msg = JSON.parse(data.toString());
+      
       if (msg.type === 'ping') {
         socket.send(JSON.stringify({ type: 'pong' }));
       }
+      
       if (msg.type === 'name' && gameData.players[msg.id]) {
         const playerData = players.get(socket);
         if (playerData) playerData.name = msg.name;
-        gameData.players[msg.id].name = msg.name;
+        if (gameData.players[msg.id]) gameData.players[msg.id].name = msg.name;
       }
+      
+      if (msg.type === 'chat' && msg.message) {
+        broadcast({
+          type: 'chat',
+          playerId: msg.playerId || id,
+          name: msg.name || 'Player',
+          message: msg.message
+        });
+      }
+      
+      if (msg.type === 'ready' && msg.id) {
+        readyPlayers.add(msg.id);
+        if (readyPlayers.size === 2 && !gameRunning) {
+          startNewGame();
+        }
+      }
+      
       if (msg.type === 'flap' && gameData.players[msg.playerId]) {
         const p = gameData.players[msg.playerId];
         if (p && p.alive) p.velocity = -9.5;
@@ -57,6 +76,7 @@ wss.on('connection', (socket) => {
 
   socket.on('close', () => {
     players.delete(socket);
+    readyPlayers.clear();
     gameRunning = false;
   });
 });
@@ -136,4 +156,4 @@ function broadcast(msg) {
   }
 }
 
-console.log('✅ Clean server started on port', PORT);
+console.log('✅ Flappy Clawb 2P with chat + ready system started on port', PORT);
