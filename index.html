@@ -10,67 +10,68 @@
         body { 
             background: #0c4a6e; 
             font-family: 'Press Start 2P', system-ui; 
-            margin:0; 
-            overflow:hidden; 
+            margin: 0; 
+            padding: 0; 
+            overflow: hidden; 
             color: white;
         }
         canvas { 
             image-rendering: pixelated; 
             border: 8px solid #164e63; 
             box-shadow: 0 25px 50px -12px rgb(0 0 0); 
+            display: block;
         }
         .overlay { 
             position: absolute; 
             top: 50%; 
             left: 50%; 
             transform: translate(-50%, -50%); 
-            text-align: center; 
             background: rgba(15, 23, 42, 0.95);
-            padding: 2rem;
+            padding: 30px;
             border: 6px solid #22d3ee;
             border-radius: 16px;
-            min-width: 380px;
+            text-align: center;
+            min-width: 400px;
         }
     </style>
 </head>
-<body class="flex items-center justify-center min-h-screen">
-    <div class="relative">
-        <canvas id="canvas" width="520" height="580"></canvas>
-        
-        <!-- Lobby -->
-        <div id="lobby" class="overlay">
-            <div class="text-6xl mb-2">🐢</div>
-            <div class="text-4xl font-bold tracking-widest text-yellow-300 mb-8">FLAPPY CLAWB</div>
+<body>
+    <div class="flex items-center justify-center min-h-screen">
+        <div class="relative">
+            <canvas id="canvas" width="520" height="580"></canvas>
             
-            <div class="mb-6">
-                <div class="text-sky-200 text-sm mb-2 tracking-widest">YOUR NAME</div>
-                <input id="name-input" type="text" maxlength="9" value="Clawb"
-                       class="block mx-auto bg-slate-900 border-4 border-sky-400 text-center text-3xl p-4 w-64 rounded-2xl text-white focus:outline-none focus:border-yellow-400">
+            <!-- Lobby -->
+            <div id="lobby" class="overlay">
+                <div class="text-6xl mb-3">🐢</div>
+                <div class="text-4xl font-bold text-yellow-300 mb-8">FLAPPY CLAWB 2P</div>
+                
+                <div class="mb-8">
+                    <div class="text-sky-200 text-sm mb-2">YOUR NAME</div>
+                    <input id="name-input" type="text" maxlength="9" value="Clawb" 
+                           class="bg-slate-900 border-4 border-sky-400 text-center text-3xl p-4 w-64 rounded-2xl text-white">
+                </div>
+                
+                <button onclick="saveName()" class="block w-full mb-6 bg-sky-500 hover:bg-sky-400 px-8 py-4 text-xl font-bold rounded-2xl border-4 border-white">
+                    SAVE NAME
+                </button>
+                
+                <button onclick="joinGame()" id="join-btn" 
+                        class="block w-full bg-emerald-500 hover:bg-emerald-400 px-8 py-6 text-3xl font-bold rounded-3xl border-4 border-white">
+                    JOIN GAME
+                </button>
+                
+                <div id="status" class="mt-10 text-sky-200 text-sm">Connecting to server...</div>
+                <div id="ping" class="text-xs text-sky-300 mt-2"></div>
             </div>
-            
-            <button onclick="saveName()" 
-                    id="save-btn"
-                    class="block mx-auto mb-6 bg-sky-500 hover:bg-sky-400 px-10 py-4 text-xl font-bold rounded-2xl border-4 border-white shadow-xl transition-all active:scale-95">
-                SAVE NAME
-            </button>
-            
-            <button onclick="joinGame()" 
-                    id="join-btn"
-                    class="block mx-auto bg-emerald-500 hover:bg-emerald-400 disabled:bg-gray-600 px-16 py-6 text-3xl font-bold rounded-3xl border-4 border-white shadow-2xl transition-all active:scale-95">
-                JOIN GAME
-            </button>
-            
-            <div id="status" class="mt-10 text-sky-200 text-sm min-h-[1.5em]">Connecting to server...</div>
-            <div id="ping" class="text-xs text-sky-300 mt-1 font-mono"></div>
-        </div>
 
-        <!-- Game Over -->
-        <div id="game-over-screen" class="overlay hidden">
-            <div id="final-result" class="text-5xl mb-8 text-red-400 font-bold"></div>
-            <button onclick="restartGame()" 
-                    class="bg-white text-slate-900 px-12 py-5 text-2xl font-bold rounded-2xl border-4 border-slate-900 hover:bg-amber-200">
-                PLAY AGAIN
-            </button>
+            <!-- Game Over -->
+            <div id="game-over-screen" class="overlay hidden">
+                <div id="final-result" class="text-4xl mb-8 text-red-400"></div>
+                <button onclick="location.reload()" 
+                        class="bg-white text-slate-900 px-12 py-5 text-2xl font-bold rounded-2xl border-4 border-slate-900">
+                    PLAY AGAIN
+                </button>
+            </div>
         </div>
     </div>
 
@@ -82,19 +83,18 @@
         let myId = null;
         let myName = "Clawb";
         let gameState = null;
-        let lastPingTime = 0;
-        let ping = 0;
+        let lastPing = 0;
+        let pingMs = 0;
         let connected = false;
         let joined = false;
 
         const statusEl = document.getElementById('status');
         const pingEl = document.getElementById('ping');
         const joinBtn = document.getElementById('join-btn');
-        const saveBtn = document.getElementById('save-btn');
 
-        function updateStatus(text, isError = false) {
+        function updateStatus(text, error = false) {
             statusEl.textContent = text;
-            statusEl.style.color = isError ? '#fda4af' : '#bae6fd';
+            statusEl.style.color = error ? '#fda4af' : '#bae6fd';
         }
 
         function connect() {
@@ -103,96 +103,77 @@
             
             ws.onopen = () => {
                 connected = true;
-                updateStatus('Connected ✓');
-                lastPingTime = performance.now();
+                updateStatus('Connected');
+                lastPing = performance.now();
                 ws.send(JSON.stringify({type: 'ping'}));
             };
             
-            ws.onmessage = (event) => {
-                const msg = JSON.parse(event.data);
+            ws.onmessage = (e) => {
+                const msg = JSON.parse(e.data);
                 
-                if (msg.type === 'connected') {
-                    myId = msg.playerId;
-                }
-                
+                if (msg.type === 'connected') myId = msg.playerId;
                 if (msg.type === 'pong') {
-                    ping = Math.round(performance.now() - lastPingTime);
-                    pingEl.textContent = `PING: ${ping}ms`;
+                    pingMs = Math.round(performance.now() - lastPing);
+                    pingEl.textContent = `PING: ${pingMs}ms`;
                     setTimeout(() => {
                         if (ws && ws.readyState === 1) {
-                            lastPingTime = performance.now();
+                            lastPing = performance.now();
                             ws.send(JSON.stringify({type: 'ping'}));
                         }
-                    }, 800);
+                    }, 1000);
                 }
-                
                 if ((msg.type === 'start' || msg.type === 'state') && !joined) {
                     joined = true;
-                    document.getElementById('lobby').classList.add('hidden');
+                    document.getElementById('lobby').style.display = 'none';
                     gameState = msg.state;
                 }
-                
                 if (msg.type === 'gameOver') {
                     gameState = msg.finalState || msg.state;
-                    const resultEl = document.getElementById('final-result');
-                    let html = 'GAME OVER<br><span class="text-2xl text-white block mt-4">';
+                    const result = document.getElementById('final-result');
+                    let html = 'GAME OVER<br><span class="text-xl text-white">';
                     Object.values(gameState.players || {}).forEach(p => {
-                        html += `${p.name}: ${p.score || 0}<br>`;
+                        html += p.name + ': ' + (p.score || 0) + '<br>';
                     });
                     html += '</span>';
-                    resultEl.innerHTML = html;
+                    result.innerHTML = html;
                     document.getElementById('game-over-screen').classList.remove('hidden');
                 }
             };
             
-            ws.onerror = () => updateStatus('Connection failed', true);
-            ws.onclose = () => updateStatus('Disconnected. Refresh.', true);
+            ws.onerror = () => updateStatus('Connection error', true);
+            ws.onclose = () => updateStatus('Disconnected - refresh page', true);
         }
 
         window.saveName = function() {
-            const input = document.getElementById('name-input');
-            myName = (input.value || 'Clawb').trim().substring(0, 9);
+            myName = document.getElementById('name-input').value.trim() || 'Clawb';
             if (ws && ws.readyState === 1 && myId) {
-                ws.send(JSON.stringify({ type: 'name', id: myId, name: myName }));
+                ws.send(JSON.stringify({type:'name', id: myId, name: myName}));
             }
-            saveBtn.textContent = 'NAME SAVED ✓';
-            saveBtn.style.backgroundColor = '#4ade80';
-            setTimeout(() => {
-                saveBtn.textContent = 'SAVE NAME';
-                saveBtn.style.backgroundColor = '';
-            }, 1200);
         };
 
         window.joinGame = function() {
             if (!connected || joined) return;
-            
+            joinBtn.textContent = 'WAITING...';
             joinBtn.disabled = true;
-            joinBtn.textContent = 'WAITING FOR PLAYER 2...';
             updateStatus('Waiting for second player...');
-            
             if (ws && ws.readyState === 1 && myId) {
-                ws.send(JSON.stringify({ type: 'name', id: myId, name: myName }));
+                ws.send(JSON.stringify({type:'name', id: myId, name: myName}));
             }
         };
 
         function flap() {
             if (ws && ws.readyState === 1 && myId && gameState?.players?.[myId]?.alive) {
-                ws.send(JSON.stringify({ type: 'flap', playerId: myId }));
+                ws.send(JSON.stringify({type:'flap', playerId: myId}));
             }
         }
-
-        window.restartGame = function() {
-            location.reload();
-        };
 
         function draw() {
             ctx.fillStyle = '#0ea5e9';
             ctx.fillRect(0, 0, 520, 580);
-            
             ctx.fillStyle = '#166534';
             ctx.fillRect(0, 500, 520, 80);
             
-            if (gameState?.pipes) {
+            if (gameState && gameState.pipes) {
                 ctx.fillStyle = '#166534';
                 gameState.pipes.forEach(p => {
                     ctx.fillRect(p.x, 0, 65, p.topHeight || 200);
@@ -200,24 +181,16 @@
                 });
             }
             
-            if (gameState?.players) {
+            if (gameState && gameState.players) {
                 Object.values(gameState.players).forEach(p => {
                     if (!p.alive) return;
-                    
                     ctx.save();
                     ctx.translate(p.x || 160, p.y || 250);
                     ctx.rotate(p.rotation || 0);
-                    
                     ctx.fillStyle = p.color || '#10b981';
                     ctx.beginPath();
-                    ctx.ellipse(0, 0, 19, 17, 0, 0, Math.PI * 2);
+                    ctx.ellipse(0, 0, 19, 17, 0, 0, Math.PI*2);
                     ctx.fill();
-                    
-                    ctx.fillStyle = '#111';
-                    ctx.beginPath();
-                    ctx.ellipse(14, -7, 8, 7, 0.6, 0, Math.PI * 2);
-                    ctx.fill();
-                    
                     ctx.restore();
                     
                     ctx.fillStyle = 'white';
@@ -232,158 +205,15 @@
         }
 
         document.addEventListener('keydown', e => {
-            if ([' ', 'Enter', 'w', 'W', 'ArrowUp'].includes(e.key)) {
-                e.preventDefault();
-                flap();
-            }
+            if ([' ', 'Enter', 'w', 'W', 'ArrowUp'].includes(e.key)) flap();
         });
-        
-        canvas.addEventListener('mousedown', flap);
+        canvas.addEventListener('click', flap);
         canvas.addEventListener('touchstart', e => { e.preventDefault(); flap(); });
 
         window.onload = () => {
             connect();
             draw();
-            setTimeout(() => document.getElementById('name-input').focus(), 400);
         };
     </script>
 </body>
-</html>`;
-
-const express = require('express');
-const { WebSocketServer } = require('ws');
-const fs = require('fs');
-
-const app = express();
-const PORT = process.env.PORT || 8080;
-
-app.use(express.static(__dirname));
-app.get('/', (req, res) => {
-  res.sendFile(__dirname + '/index.html');
-});
-
-const server = app.listen(PORT, () => {
-  console.log(`Flappy Clawb 2P running on port ${PORT}`);
-});
-
-const wss = new WebSocketServer({ server });
-
-let players = new Map();
-let gameRunning = false;
-let gameData = { players: {}, pipes: [], frame: 0 };
-
-wss.on('connection', (socket) => {
-  if (players.size >= 2) {
-    socket.send(JSON.stringify({type: 'full'}));
-    return socket.close();
-  }
-
-  const id = players.size === 0 ? 'p1' : 'p2';
-  players.set(socket, { id, name: id === 'p1' ? 'Clawb' : 'Shellby' });
-
-  socket.send(JSON.stringify({ type: 'connected', playerId: id }));
-
-  if (players.size === 2 && !gameRunning) {
-    startNewGame();
-  }
-
-  socket.on('message', (data) => {
-    try {
-      const msg = JSON.parse(data.toString());
-      if (msg.type === 'ping') {
-        socket.send(JSON.stringify({ type: 'pong' }));
-      }
-      if (msg.type === 'name' && gameData.players[msg.id]) {
-        const playerData = players.get(socket);
-        if (playerData) playerData.name = msg.name;
-        gameData.players[msg.id].name = msg.name;
-      }
-      if (msg.type === 'flap' && gameData.players[msg.playerId]) {
-        const p = gameData.players[msg.playerId];
-        if (p && p.alive) p.velocity = -9.5;
-      }
-    } catch (e) {}
-  });
-
-  socket.on('close', () => {
-    players.delete(socket);
-    gameRunning = false;
-  });
-});
-
-function startNewGame() {
-  gameRunning = true;
-  gameData = {
-    players: {
-      p1: { id: 'p1', name: 'Clawb', x: 160, y: 250, velocity: 0, rotation: 0, color: '#10b981', alive: true, score: 0 },
-      p2: { id: 'p2', name: 'Shellby', x: 280, y: 250, velocity: 0, rotation: 0, color: '#3b82f6', alive: true, score: 0 }
-    },
-    pipes: [],
-    frame: 0
-  };
-
-  broadcast({ type: 'start', state: gameData });
-
-  let pipeTimer = 0;
-  const interval = setInterval(() => {
-    if (!gameRunning || players.size < 2) {
-      clearInterval(interval);
-      return;
-    }
-
-    gameData.frame++;
-    pipeTimer++;
-
-    Object.values(gameData.players).forEach(p => {
-      if (!p.alive) return;
-      p.velocity = (p.velocity || 0) + 0.68;
-      p.y = (p.y || 250) + p.velocity;
-      p.rotation = Math.min(Math.max((p.velocity || 0) * 0.055, -0.9), 1.4);
-      
-      if (p.y < 40 || p.y > 480) p.alive = false;
-    });
-
-    if (pipeTimer > 65) {
-      const top = 100 + Math.random() * 220;
-      gameData.pipes.push({ x: 550, topHeight: top, passed: new Set() });
-      pipeTimer = 0;
-    }
-
-    for (let i = gameData.pipes.length - 1; i >= 0; i--) {
-      const pipe = gameData.pipes[i];
-      pipe.x -= 2.9;
-
-      Object.values(gameData.players).forEach(player => {
-        if (!player.alive) return;
-        const r = 18;
-        const hit = (player.x > pipe.x - 10 && player.x < pipe.x + 75) &&
-                   ((player.y - r < pipe.topHeight) || (player.y + r > pipe.topHeight + 165));
-        if (hit) player.alive = false;
-
-        if (pipe.x + 65 < player.x && !pipe.passed.has(player.id)) {
-          pipe.passed.add(player.id);
-          player.score = (player.score || 0) + 10;
-        }
-      });
-
-      if (pipe.x < -100) gameData.pipes.splice(i, 1);
-    }
-
-    const alivePlayers = Object.values(gameData.players).filter(p => p.alive).length;
-    if (alivePlayers === 0) {
-      gameRunning = false;
-      broadcast({ type: 'gameOver', finalState: gameData });
-    } else {
-      broadcast({ type: 'state', state: gameData });
-    }
-  }, 30);
-}
-
-function broadcast(msg) {
-  const str = JSON.stringify(msg);
-  for (let [client] of players) {
-    if (client.readyState === 1) client.send(str);
-  }
-}
-
-console.log('Flappy Clawb 2P server started on port', PORT);
+</html>
